@@ -823,19 +823,27 @@
 
   .danger-band{ position:absolute; left:0; right:0; background:linear-gradient(180deg,rgba(220,38,38,0.15),rgba(220,38,38,0.55),rgba(220,38,38,0.15)); pointer-events:none; z-index:2; }
 
+  .g-orb-chest{ background:linear-gradient(135deg,#f0abfc,#7c3aed); border-radius:6px; box-shadow:0 0 12px #a855f7; }
+  .g-telegraph{ outline:3px solid #ef4444; outline-offset:2px; }
+  .wave-summary{ position:absolute; left:10px; right:10px; bottom:44px; text-align:center; font-size:13px; font-weight:700; color:var(--gold-light); background:rgba(0,0,0,0.55); border-radius:12px; padding:8px 10px; pointer-events:none; z-index:14; }
+  .picker-row.unseen .picker-item-preview{ filter:grayscale(1) brightness(0.5); }
+  .settings-range{ width:100%; min-height:44px; }
+
+  .g-spark{ position:absolute; width:4px; height:4px; border-radius:50%; background:#fde68a; box-shadow:0 0 6px #f59e0b; pointer-events:none; transition:transform .45s ease-out, opacity .45s ease-out; }
+  .bg-star{ position:absolute; border-radius:50%; background:#ffffff; pointer-events:none; animation:twinkle 4s ease-in-out infinite; }
+  @keyframes twinkle{ 0%,100%{ opacity:0.2; } 50%{ opacity:0.9; } }
+  .mini-ship{ width:30px; height:30px; margin:auto; filter:drop-shadow(0 0 3px rgba(255,255,255,0.5)); }
+  .rarity-commun{ color:#cbd5e1; }
+  .rarity-rare{ color:#60a5fa; }
+  .rarity-epique{ color:#c084fc; }
+  .rarity-legendaire{ color:#facc15; }
+  .picker-item-preview{ display:flex; align-items:center; justify-content:center; }
+
   /* small screens ultra-compact adjustments */
   @media (max-width:400px){
     .menu-title{font-size:38px;}
   }
 </style>
-
-<link rel="manifest" href="./manifest.webmanifest">
-<meta name="theme-color" content="#07070b">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="APAISE">
-<link rel="apple-touch-icon" href="./icon.svg">
-
 </head>
 <body>
 
@@ -885,7 +893,7 @@
       <button class="ghost-btn mode-btn galaxy-mode-btn" data-mode="grid" type="button" role="radio" aria-checked="true">Formation</button>
       <button class="ghost-btn mode-btn galaxy-mode-btn" data-mode="continuous" type="button" role="radio" aria-checked="false">Arrivée continue</button>
     </div>
-    <p class="soap-hint">Glissez pour déplacer le vaisseau — il tire automatiquement. Récupérez les orbes pour augmenter la puissance et gagner des cristaux.</p>
+    <p class="soap-hint">Glissez, ou utilisez les flèches (ou W A S D), pour déplacer le vaisseau — il tire automatiquement. Récupérez les orbes pour augmenter la puissance et gagner des cristaux.</p>
     <div class="galaxy-stage" id="galaxyStage" role="application" aria-label="Zone de jeu Galaxie Attack. Glissez pour déplacer votre vaisseau."></div>
     <button type="button" id="btnOpenShop" class="galaxy-shop-fab" aria-label="Ouvrir le hangar des vaisseaux">🛸</button>
   </section>
@@ -959,6 +967,11 @@
     <div class="missions-body">
       <canvas id="shipPreviewCanvas" width="320" height="260" class="preview-canvas" aria-hidden="true"></canvas>
       <p id="shipPreviewInfo"></p>
+      <div class="save-buttons">
+        <button class="ghost-btn" id="btnReplaySound" type="button">🔊 Rejouer le son</button>
+        <button class="ghost-btn" id="btnCompareShip" type="button">⚖ Comparer avec mon vaisseau</button>
+      </div>
+      <p id="shipCompareInfo"></p>
     </div>
   </div>
 </div>
@@ -993,6 +1006,23 @@
         <button type="button" class="choice-btn" data-sort="nom" aria-pressed="false">Nom</button>
         <button type="button" class="choice-btn" data-sort="degats" aria-pressed="false">Dégâts</button>
       </div>
+      <p class="soap-hint">Volume des effets</p>
+      <input type="range" id="sfxSlider" min="0" max="100" value="100" aria-label="Volume des effets" class="settings-range">
+      <p class="soap-hint">Volume de la musique</p>
+      <input type="range" id="musicSlider" min="0" max="100" value="100" aria-label="Volume de la musique" class="settings-range">
+      <p class="soap-hint">Vitesse de jeu</p>
+      <div class="choice-row" role="group" aria-label="Vitesse de jeu">
+        <button type="button" class="choice-btn" data-speed="normal" aria-pressed="false">Normale</button>
+        <button type="button" class="choice-btn" data-speed="lent" aria-pressed="false">Ralentie</button>
+      </div>
+      <p class="soap-hint">Vibrations (iPhone, si le navigateur le permet)</p>
+      <div class="choice-row" role="group" aria-label="Vibrations">
+        <button type="button" class="choice-btn" data-haptic="on" aria-pressed="false">Activées</button>
+        <button type="button" class="choice-btn" data-haptic="off" aria-pressed="false">Désactivées</button>
+      </div>
+      <p class="soap-hint">Rapport d'équilibrage</p>
+      <button type="button" class="ghost-btn" id="btnBalanceReport">Afficher les dégâts par catégorie</button>
+      <div id="balanceReport" class="missions-body"></div>
       <p class="soap-hint">Difficulté</p>
       <div class="choice-row" role="group" aria-label="Difficulté">
         <button type="button" class="choice-btn" data-diff="facile" aria-pressed="false">Facile</button>
@@ -1101,6 +1131,10 @@
   document.addEventListener('touchstart', unlockAudio, { once:true, passive:true });
   document.addEventListener('click', unlockAudio, { once:true });
 
+  function busVolume(bus){
+    if(bus === 'music'){ return (window.__musicVol != null ? window.__musicVol : 1); }
+    return (window.__sfxVol != null ? window.__sfxVol : 1);
+  }
   function playTone(opts){ try{ playToneRaw(opts); }catch(e){} }
   function playToneRaw(opts){
     opts = opts || {};
@@ -1109,7 +1143,7 @@
     var freqEnd = opts.freqEnd != null ? opts.freqEnd : null; // pour un effet de "glissement" de hauteur
     var duration = opts.duration != null ? opts.duration : 0.15;
     var type = opts.type || 'sine';
-    var gainVal = opts.gain != null ? opts.gain : 0.2;
+    var gainVal = (opts.gain != null ? opts.gain : 0.2) * busVolume(opts.bus);
     var filterFreq = opts.filterFreq || null;
     var attack = opts.attack != null ? opts.attack : 0.005;
     var release = opts.release != null ? opts.release : 0.08;
@@ -1148,7 +1182,7 @@
     opts = opts || {};
     var ctx = getCtx();
     var duration = opts.duration != null ? opts.duration : 0.2;
-    var gainVal = opts.gain != null ? opts.gain : 0.3;
+    var gainVal = (opts.gain != null ? opts.gain : 0.3) * busVolume(opts.bus);
     var filterFreq = opts.filterFreq != null ? opts.filterFreq : 2000;
     var filterFreqEnd = opts.filterFreqEnd != null ? opts.filterFreqEnd : null;
     var filterQ = opts.filterQ != null ? opts.filterQ : 1;
@@ -1542,70 +1576,70 @@
 
   // ---- Dix catégories supplémentaires, cinq sous-catégories chacune (16 vaisseaux par sous-catégorie) ----
   var GEN_CATS = [
-    { weapon:'g_aurora', label:'Aurore Boréale', color:'#34d399', shapes:['orb','crescent'], subs:[
+    { weapon:'g_aurora', effect:'shield', effectText:'Protège brièvement le vaisseau à chaque impact.', label:'Aurore Boréale', color:'#34d399', shapes:['orb','crescent'], subs:[
       { key:'aurora_ruban', label:'Ruban', desc:'Un ruban vert qui ondule en montant.', spec:{ count:1, speed:9, w:10, h:40, radius:'4px', wave:{ amp:24, freq:0.18 } } },
       { key:'aurora_voile', label:'Voile', desc:'Cinq traits qui forment un voile.', spec:{ count:5, spread:50, speed:7, w:6, h:20, radius:'3px' } },
       { key:'aurora_halo', label:'Halo', desc:'Un cercle de huit lueurs.', spec:{ count:8, spread:360, speed:4, w:9, h:9 } },
       { key:'aurora_vague', label:'Vague verte', desc:'Deux vagues qui se croisent.', spec:{ count:2, spread:20, speed:8, w:8, h:8, wave:{ amp:40, freq:0.3 }, waveOffset:20 } },
       { key:'aurora_pluie', label:'Pluie de lumière', desc:'Des lueurs qui montent au hasard.', spec:{ count:3, speed:6, jitter:60, w:5, h:12, radius:'3px' } }
     ] },
-    { weapon:'g_meteor', label:'Météorite', color:'#f97316', shapes:['diamond','shield'], subs:[
+    { weapon:'g_meteor', effect:'quake', effectText:'Secousse : endommage les ennemis proches de l\'impact.', label:'Météorite', color:'#f97316', shapes:['diamond','shield'], subs:[
       { key:'meteor_lourd', label:'Lourd', desc:'Un gros rocher qui explose à l\'impact.', spec:{ count:1, speed:6, w:24, h:24, splash:40 } },
       { key:'meteor_traine', label:'Traîne', desc:'Un trait de feu très rapide.', spec:{ count:1, speed:14, w:6, h:34, radius:'3px' } },
       { key:'meteor_essaim', label:'Essaim', desc:'Six petits rochers en groupe.', spec:{ count:6, spread:30, speed:9, w:8, h:8 } },
       { key:'meteor_double', label:'Double impact', desc:'Deux rochers qui frappent ensemble.', spec:{ count:2, spread:16, speed:10, w:12, h:20, splash:22 } },
       { key:'meteor_eclat', label:'Éclat', desc:'Quatre éclats tirés en arc large.', spec:{ count:4, spread:90, speed:5, w:6, h:6, splash:14 } }
     ] },
-    { weapon:'g_quartz', label:'Quartz', color:'#c4b5fd', shapes:['blade','cross'], subs:[
+    { weapon:'g_quartz', effect:'split', effectText:'Se divise en deux éclats à l\'impact.', label:'Quartz', color:'#c4b5fd', shapes:['blade','cross'], subs:[
       { key:'quartz_prisme', label:'Prisme', desc:'Trois lames violettes très serrées.', spec:{ count:3, spread:24, speed:9, w:6, h:22, radius:'2px' } },
       { key:'quartz_eclat', label:'Éclat cristal', desc:'Un cristal lumineux très rapide.', spec:{ count:1, speed:11, w:10, h:10, radius:'1px' } },
       { key:'quartz_eventail', label:'Éventail cristal', desc:'Sept lames en éventail large.', spec:{ count:7, spread:70, speed:8, w:5, h:14, radius:'2px' } },
       { key:'quartz_sonde', label:'Sonde', desc:'Un cristal qui suit sa cible.', spec:{ count:1, speed:6, w:14, h:14, homing:true, turn:0.1 } },
       { key:'quartz_grille', label:'Grille', desc:'Quatre longs cristaux parallèles.', spec:{ count:4, spread:10, speed:7, w:4, h:30, radius:'2px' } }
     ] },
-    { weapon:'g_storm', label:'Orage', color:'#facc15', shapes:['electric','spike'], subs:[
+    { weapon:'g_storm', effect:'chain', effectText:'Foudre : touche aussi l\'ennemi le plus proche.', label:'Orage', color:'#facc15', shapes:['electric','spike'], subs:[
       { key:'storm_eclair', label:'Éclair', desc:'Un éclair très rapide.', spec:{ count:1, speed:18, w:3, h:40, radius:'2px', splash:12 } },
       { key:'storm_ramifie', label:'Ramifié', desc:'Quatre éclairs qui zigzaguent.', spec:{ count:4, spread:40, speed:12, w:3, h:24, radius:'2px', splash:10, wave:{ amp:8, freq:0.5 } } },
       { key:'storm_grele', label:'Grêle', desc:'Cinq grêlons jetés au hasard.', spec:{ count:5, jitter:140, speed:10, w:4, h:4 } },
       { key:'storm_arc', label:'Arc', desc:'Deux arcs jumeaux, le second arrive plus tard.', spec:{ count:2, spread:16, speed:13, w:4, h:28, radius:'2px', echoMs:150 } },
       { key:'storm_tempete', label:'Tempête', desc:'Neuf traits en tempête.', spec:{ count:9, spread:160, speed:7, w:3, h:12, radius:'2px' } }
     ] },
-    { weapon:'g_vortex', label:'Vortex', color:'#0ea5e9', shapes:['crescent','orb'], subs:[
+    { weapon:'g_vortex', effect:'pull', effectText:'Attire les ennemis voisins vers l\'impact.', label:'Vortex', color:'#0ea5e9', shapes:['crescent','orb'], subs:[
       { key:'vortex_spire', label:'Spirale', desc:'Deux disques qui tournent en avançant.', spec:{ count:2, speed:7, w:10, h:10, spin:18 } },
       { key:'vortex_cercle', label:'Cercle', desc:'Huit disques qui tournent autour de vous.', spec:{ count:8, spread:360, speed:5, w:7, h:7, spin:10 } },
       { key:'vortex_tourbillon', label:'Tourbillon', desc:'Trois disques qui tournent vite.', spec:{ count:3, spread:60, speed:7, w:10, h:10, spin:25 } },
       { key:'vortex_centre', label:'Centre', desc:'Une grosse sphère qui explose en zone.', spec:{ count:1, speed:3, w:28, h:28, splash:50, life:90 } },
       { key:'vortex_ruban', label:'Ruban', desc:'Un ruban qui ondule et tourne.', spec:{ count:1, speed:8, w:8, h:30, radius:'3px', wave:{ amp:30, freq:0.25 }, spin:6 } }
     ] },
-    { weapon:'g_magma', label:'Magma', color:'#dc2626', shapes:['falcon','cross'], subs:[
+    { weapon:'g_magma', effect:'burn', effectText:'Brûle l\'ennemi touché pendant trois secondes.', label:'Magma', color:'#dc2626', shapes:['falcon','cross'], subs:[
       { key:'magma_goutte', label:'Goutte', desc:'Trois gouttes de lave.', spec:{ count:3, spread:14, speed:7, w:9, h:13 } },
       { key:'magma_jet', label:'Jet', desc:'Un jet de lave très rapide.', spec:{ count:1, speed:12, w:7, h:26, radius:'3px' } },
       { key:'magma_pluie', label:'Pluie', desc:'Quatre gouttes au hasard.', spec:{ count:4, jitter:100, speed:6, w:8, h:8, splash:12 } },
       { key:'magma_bombe', label:'Bombe de lave', desc:'Une grosse bombe qui explose en zone.', spec:{ count:1, speed:4, w:20, h:20, splash:48, life:80 } },
       { key:'magma_etoile', label:'Étoile', desc:'Cinq éclats qui partent dans toutes les directions.', spec:{ count:5, spread:180, speed:5, w:6, h:6, splash:10 } }
     ] },
-    { weapon:'g_frost', label:'Givre', color:'#7dd3fc', shapes:['spike','diamond'], subs:[
+    { weapon:'g_frost', effect:'frost', effectText:'Fragilise l\'ennemi : il reçoit 50 % de dégâts en plus.', label:'Givre', color:'#7dd3fc', shapes:['spike','diamond'], subs:[
       { key:'frost_pic', label:'Pic', desc:'Un long pic de glace.', spec:{ count:1, speed:10, w:6, h:30, radius:'2px' } },
       { key:'frost_flocon', label:'Flocon', desc:'Six flocons en éventail.', spec:{ count:6, spread:120, speed:6, w:6, h:6 } },
       { key:'frost_bruine', label:'Bruine', desc:'Quatre gouttes de givre au hasard.', spec:{ count:4, jitter:120, speed:7, w:3, h:10, radius:'2px' } },
       { key:'frost_gel', label:'Gel', desc:'Une nappe de gel qui reste en place.', spec:{ count:1, speed:5, w:18, h:18, splash:36, life:120 } },
       { key:'frost_eventail', label:'Éventail glacé', desc:'Cinq pics en éventail.', spec:{ count:5, spread:60, speed:9, w:5, h:18, radius:'2px' } }
     ] },
-    { weapon:'g_sand', label:'Sable Stellaire', color:'#fcd34d', shapes:['shield','blade'], subs:[
+    { weapon:'g_sand', effect:'push', effectText:'Repousse les ennemis voisins.', label:'Sable Stellaire', color:'#fcd34d', shapes:['shield','blade'], subs:[
       { key:'sand_nuage', label:'Nuage de sable', desc:'Un nuage qui reste longtemps.', spec:{ count:1, speed:3, w:26, h:26, splash:34, life:130 } },
       { key:'sand_grain', label:'Grains', desc:'Sept grains lancés au hasard.', spec:{ count:7, jitter:60, speed:9, w:3, h:3 } },
       { key:'sand_dune', label:'Dune', desc:'Deux disques qui ondulent doucement.', spec:{ count:2, spread:12, speed:5, w:12, h:12, wave:{ amp:20, freq:0.15 }, waveOffset:30 } },
       { key:'sand_vent', label:'Vent', desc:'Trois traits rapides dans le vent.', spec:{ count:3, spread:30, speed:11, w:4, h:16, radius:'2px' } },
       { key:'sand_tornade', label:'Tornade', desc:'Cinq disques qui tournent en éventail.', spec:{ count:5, spread:200, speed:4, w:9, h:9, spin:12 } }
     ] },
-    { weapon:'g_obsid', label:'Obsidienne', color:'#64748b', shapes:['stealth','chevron'], subs:[
+    { weapon:'g_obsid', effect:'obsidian', effectText:'Perce l\'armure des boss.', label:'Obsidienne', color:'#64748b', shapes:['stealth','chevron'], subs:[
       { key:'obs_lame', label:'Lame', desc:'Une lame sombre très rapide.', spec:{ count:1, speed:14, w:4, h:38, radius:'2px' } },
       { key:'obs_eclipse', label:'Éclipse', desc:'Un disque sombre qui couvre une grande zone.', spec:{ count:1, speed:2, w:34, h:34, splash:52, life:150 } },
       { key:'obs_ombre', label:'Ombre', desc:'Trois ombres en éventail serré.', spec:{ count:3, spread:18, speed:8, w:10, h:16, radius:'3px' } },
       { key:'obs_fente', label:'Fente', desc:'Deux fentes qui arrivent l\'une après l\'autre.', spec:{ count:2, spread:40, speed:10, w:4, h:26, radius:'2px', echoMs:120 } },
       { key:'obs_eparpille', label:'Éparpillé', desc:'Six éclats dispersés.', spec:{ count:6, spread:110, speed:7, w:5, h:5 } }
     ] },
-    { weapon:'g_light', label:'Lumière', color:'#fef3c7', shapes:['orb','shield'], subs:[
+    { weapon:'g_light', effect:'heal', effectText:'Rend une vie toutes les 15 touches.', label:'Lumière', color:'#fef3c7', shapes:['orb','shield'], subs:[
       { key:'light_faisceau', label:'Faisceau', desc:'Un long faisceau de lumière.', spec:{ count:1, speed:16, w:6, h:50, radius:'3px' } },
       { key:'light_rayons', label:'Rayons', desc:'Six rayons en éventail large.', spec:{ count:6, spread:100, speed:8, w:3, h:22, radius:'2px' } },
       { key:'light_flash', label:'Flash', desc:'Deux flashs qui explosent en zone.', spec:{ count:2, spread:30, speed:4, w:20, h:20, splash:26, life:60 } },
@@ -1617,7 +1651,7 @@
   GEN_CATS.forEach(function(c, ci){
     c.subs.forEach(function(s){
       GEN_SHIPS = GEN_SHIPS.concat(genSub(c.label + ' ' + s.label, c.weapon, s.key, c.shapes, 160 + ci*25, 64, 16, function(i){
-        return { desc:s.desc, params:{ genColor:c.color, genSpec:s.spec, fireRateMult: Math.max(0.35, 1 - i*0.04) } };
+        return { desc:s.desc + ' ' + c.effectText, params:{ genColor:c.color, genSpec:s.spec, genEffect:c.effect, fireRateMult: Math.max(0.35, 1 - i*0.04) } };
       }));
     });
   });
@@ -1783,7 +1817,7 @@
     el.style.clipPath = SHIP_SHAPE_PATHS[model.shape] || SHIP_SHAPE_PATHS.classic;
     el.style.borderRadius = model.shape === 'orb' ? '50%' : '0';
     el.style.background = 'linear-gradient(180deg,' + color.light + ',' + color.base + ')';
-    el.style.boxShadow = '0 0 12px ' + color.base;
+    el.style.filter = 'drop-shadow(0 0 5px ' + color.base + ') drop-shadow(0 0 1px #ffffff)';
   }
 
   function initShipShop(){
@@ -1912,6 +1946,8 @@
       stOv.querySelectorAll('[data-theme]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-theme') === galaxyTheme ? 'true' : 'false'); });
       stOv.querySelectorAll('[data-diff]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-diff') === difficultyLevel ? 'true' : 'false'); });
       stOv.querySelectorAll('[data-sort]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-sort') === sortMode ? 'true' : 'false'); });
+      stOv.querySelectorAll('[data-speed]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-speed') === gameSpeed ? 'true' : 'false'); });
+      stOv.querySelectorAll('[data-haptic]').forEach(function(b){ b.setAttribute('aria-pressed', ((b.getAttribute('data-haptic') === 'on') === hapticOn) ? 'true' : 'false'); });
     };
     if(stBtn && stOv){
       stBtn.addEventListener('click', function(){ renderSettings(); stOv.hidden = false; document.getElementById('settingsTitle').focus(); });
@@ -1922,8 +1958,26 @@
         if(t.hasAttribute('data-theme')){ galaxyTheme = t.getAttribute('data-theme'); applyGalaxyTheme(); saveGame(); renderSettings(); }
         else if(t.hasAttribute('data-diff')){ difficultyLevel = t.getAttribute('data-diff'); saveGame(); renderSettings(); }
         else if(t.hasAttribute('data-sort')){ sortMode = t.getAttribute('data-sort'); saveGame(); renderSettings(); renderShipShopList(); }
+        else if(t.hasAttribute('data-speed')){ gameSpeed = t.getAttribute('data-speed'); saveGame(); renderSettings(); }
+        else if(t.hasAttribute('data-haptic')){ hapticOn = t.getAttribute('data-haptic') === 'on'; saveGame(); renderSettings(); if(hapticOn){ haptic(20); } }
+        else if(t.id === 'btnBalanceReport'){ renderBalanceReport(); }
       });
     }
+    var rpBtn = document.getElementById('btnReplaySound');
+    if(rpBtn){ rpBtn.addEventListener('click', function(){ if(previewModel){ playShipSound(previewModel); } }); }
+    var cmBtn = document.getElementById('btnCompareShip');
+    if(cmBtn){ cmBtn.addEventListener('click', function(){
+      if(!previewModel){ return; }
+      var eq = findShipModel(equippedShipId);
+      document.getElementById('shipCompareInfo').textContent =
+        'Mon vaisseau : ' + eq.label + ' (≈ ' + estimateDps(eq) + ' dégâts/s, ' + rarityOf(eq) + ').  ' +
+        'Celui-ci : ' + previewModel.label + ' (≈ ' + estimateDps(previewModel) + ' dégâts/s, ' + rarityOf(previewModel) + ').';
+    }); }
+    var sfxS = document.getElementById('sfxSlider'), musS = document.getElementById('musicSlider');
+    if(sfxS){ sfxS.value = Math.round((window.__sfxVol != null ? window.__sfxVol : 1) * 100);
+      sfxS.addEventListener('input', function(){ window.__sfxVol = sfxS.value / 100; saveGame(); }); }
+    if(musS){ musS.value = Math.round((window.__musicVol != null ? window.__musicVol : 1) * 100);
+      musS.addEventListener('input', function(){ window.__musicVol = musS.value / 100; saveGame(); }); }
     var pvOv = document.getElementById('shipPreviewOverlay');
     if(pvOv){ document.getElementById('btnClosePreview').addEventListener('click', function(){ pvOv.hidden = true; stopPreview(); }); }
     renderCrystalPacks();
@@ -2099,16 +2153,28 @@
       var equipped = equippedShipId === model.id;
       var row = document.createElement('div');
       row.className = 'picker-row';
+      if(!owned && seenShips.indexOf(model.id) === -1){ row.classList.add('unseen'); }
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'picker-item';
       btn.setAttribute('role', 'option');
-      btn.disabled = (!owned && cristaux < model.cost);
-      var statusText = equipped ? '✅ Équipé' : (owned ? 'Appuyer pour équiper' : ('🔒 ' + model.cost + ' cristaux ≈ ' + Math.ceil(model.cost/2) + ' orbes'));
+      btn.disabled = (!owned && (cristaux < model.cost || !unlockMet(model)));
+      var statusText = equipped ? '✅ Équipé' : (owned ? 'Appuyer pour équiper' : (!unlockMet(model) ? ('🎯 Objectif : ' + unlockText(model)) : ('🔒 ' + model.cost + ' cristaux ≈ ' + Math.ceil(model.cost/2) + ' orbes')));
       statusText += ' · ≈ ' + estimateDps(model) + ' dégâts/s';
       btn.innerHTML = '<span class="picker-item-preview" aria-hidden="true">🛸</span>' +
         '<span>' + model.label + ' <small class="rarity">' + rarityOf(model) + '</small><br>' +
         '<small style="font-weight:400;color:var(--muted);">' + model.desc + ' — ' + statusText + '</small></span>';
+      var icon = btn.querySelector('.picker-item-preview');
+      if(icon){
+        icon.textContent = '';
+        var mini = document.createElement('div');
+        mini.className = 'mini-ship';
+        mini.style.clipPath = SHIP_SHAPE_PATHS[model.shape] || SHIP_SHAPE_PATHS.classic;
+        mini.style.background = model.genColor ? model.genColor : 'linear-gradient(180deg,#f2d675,#d4af37)';
+        icon.appendChild(mini);
+      }
+      var rs = btn.querySelector('.rarity');
+      if(rs){ rs.classList.add('rarity-' + rarityOf(model).toLowerCase().replace(/é/g, 'e')); }
       btn.addEventListener('click', function(){ handleShipAction(model); });
       var isFav = favorites.indexOf(model.id) !== -1;
       var fav = document.createElement('button');
@@ -2233,6 +2299,7 @@
 
   function handleShipAction(model){
     endTrial();
+    if(ownedShips.indexOf(model.id) === -1 && !unlockMet(model)){ announce('Objectif non atteint : ' + unlockText(model) + '.'); return; }
     var owned = ownedShips.indexOf(model.id) !== -1;
     if(!owned){
       if(cristaux >= model.cost){
@@ -2288,6 +2355,7 @@
     galaxyLives = (todayModifier() === 'fragile') ? 1 : 3 + Math.floor(upgrades.life / 2);
     galaxyShieldUntil = performance.now() + 2000 * talents.shield;
     applyGalaxyTheme();
+    addBackgroundStars();
     initShipShop();
     buildWave();
     updateGalaxyCounter();
@@ -2297,6 +2365,40 @@
 
   // Le vaisseau suit librement le doigt / la souris partout dans la zone de jeu
   // (haut, bas, gauche, droite), plus de limite de hauteur.
+  // ---------- Clavier : flèches ou W A S D ----------
+  var keysDown = {};
+  var KEY_MAP = { ArrowLeft:'ArrowLeft', ArrowRight:'ArrowRight', ArrowUp:'ArrowUp', ArrowDown:'ArrowDown',
+    a:'ArrowLeft', A:'ArrowLeft', d:'ArrowRight', D:'ArrowRight', w:'ArrowUp', W:'ArrowUp', s:'ArrowDown', S:'ArrowDown' };
+  function keyboardAllowed(e){
+    if(currentScreenKey !== 'galaxy') return false;
+    var t = e.target && e.target.tagName ? e.target.tagName : '';
+    if(t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT'){ return false; }
+    if(document.querySelector('.picker-overlay:not([hidden])')){ return false; }
+    return true;
+  }
+  window.addEventListener('keydown', function(e){
+    var mapped = KEY_MAP[e.key];
+    if(!mapped || !keyboardAllowed(e)){ return; }
+    keysDown[mapped] = true;
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', function(e){
+    var mapped = KEY_MAP[e.key];
+    if(mapped){ keysDown[mapped] = false; }
+  });
+  window.addEventListener('blur', function(){ keysDown = {}; });
+  function updateKeyboardMove(){
+    if(galaxyShipX == null || galaxyPaused) return;
+    if(performance.now() < galaxyControlLockUntil) return;
+    var dx = (keysDown.ArrowRight ? 1 : 0) - (keysDown.ArrowLeft ? 1 : 0);
+    var dy = (keysDown.ArrowDown ? 1 : 0) - (keysDown.ArrowUp ? 1 : 0);
+    if(!dx && !dy) return;
+    if(dx && dy){ dx *= 0.7071; dy *= 0.7071; }
+    var s = galaxyStageSize();
+    galaxyShipX = Math.max(0, Math.min(s.w - SHIP_W, galaxyShipX + dx * 6));
+    galaxyShipY = Math.max(0, Math.min(s.h - SHIP_H, galaxyShipY + dy * 6));
+  }
+
   function setupShipControl(){
     var stage = document.getElementById('galaxyStage');
     function pointXY(e){
@@ -2394,6 +2496,7 @@
     if(!en.alive) return;
     // Armure du boss : les tirs ordinaires font peu de dégâts, plus faibles encore une fois le boss blessé
     var amount = en.boss ? (en.hp <= en.maxHp*0.3 ? 2 : 1) : (dmg || 1) * currentWeaponDamageMult();
+    if(en.fragileUntil && performance.now() < en.fragileUntil){ amount *= 1.5; }
     en.hp -= amount * (1 + 0.1 * upgrades.dmg);
     if(en.hp <= 0){
       destroyEnemy(en);
@@ -2436,6 +2539,7 @@
     galaxyWaveNumber++;
     if(galaxyWaveNumber % 5 === 0){ spawnBoss(); }
     galaxyWaveScheduled = false;
+    waveStart = { orbs: missionStats.orbs, cr: cristaux, lives: galaxyLives, num: galaxyWaveNumber };
     announce('Nouvelle formation de vaisseaux ennemis.');
   }
 
@@ -2494,7 +2598,7 @@
     el.style.width = w + 'px';
     el.style.height = h + 'px';
     if(opts.bg){ el.style.background = opts.bg; }
-    if(opts.glow){ el.style.boxShadow = opts.glow; }
+    if(opts.glow){ el.style.boxShadow = opts.glow; var gm = opts.glow.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); if(gm){ el.style.filter = 'drop-shadow(0 0 4px ' + gm[0] + ')'; } }
     if(opts.radius){ el.style.borderRadius = opts.radius; }
     el.setAttribute('aria-hidden','true');
     stage.appendChild(el);
@@ -3423,6 +3527,7 @@
         };
         if(spec.wave){ opts.wave = { amp: spec.wave.amp, freq: spec.wave.freq }; }
         var m = createProjectile(x, y, vx, vy, opts);
+        m.effect = model.genEffect || null;
         if(spec.homing){ m.homing = true; m.turnRate = spec.turn || 0.12; }
         if(spec.spin){ m.spin = spec.spin; m.angle = 0; }
         if(spec.wave && spec.waveOffset){ m.age = i * spec.waveOffset; }
@@ -3523,6 +3628,22 @@
     el.style.transform = 'translate(' + (x-2) + 'px,' + (y-5) + 'px)';
     el.setAttribute('aria-hidden','true');
     stage.appendChild(el);
+    for(var sp = 0; sp < 8; sp++){
+      var dot = document.createElement('div');
+      dot.className = 'g-spark';
+      dot.setAttribute('aria-hidden', 'true');
+      dot.style.left = (x + 6) + 'px';
+      dot.style.top = (y + 6) + 'px';
+      stage.appendChild(dot);
+      (function(d, a){
+        var dist = 22 + Math.random() * 22;
+        requestAnimationFrame(function(){ requestAnimationFrame(function(){
+          d.style.transform = 'translate(' + (Math.cos(a) * dist) + 'px,' + (Math.sin(a) * dist) + 'px)';
+          d.style.opacity = '0';
+        }); });
+        setTimeout(function(){ d.remove(); }, 480);
+      })(dot, sp * Math.PI / 4 + Math.random() * 0.4);
+    }
     setTimeout(function(){ el.remove(); }, 380);
   }
 
@@ -3544,6 +3665,7 @@
     if(combo > 0 && combo % 10 === 0){ cristaux += 5 + 2 * talents.combo; announce('Série de ' + combo + ' éliminations ! +5 cristaux.'); }
     if(enemy.elite){ spawnOrb(enemy.x + enemy.w/2, enemy.y, 'shield'); }
     if(enemy.redOrb){ spawnOrb(enemy.x + enemy.w/2, enemy.y, 'red'); }
+    if(Math.random() < 0.08){ spawnOrb(enemy.x + enemy.w/2, enemy.y, 'chest'); }
     if(galaxyScore % 50 === 0){ onMilestone(galaxyScore); }
     updateGalaxyCounter();
     if(Math.random() < 0.28){
@@ -3557,7 +3679,7 @@
     var size = (type === 'gold' || type === 'red') ? ORB_SIZE_GOLD : ORB_SIZE;
     var stage = document.getElementById('galaxyStage');
     var el = document.createElement('div');
-    el.className = 'g-orb' + (type === 'gold' ? ' g-orb-gold' : (type === 'shield' ? ' g-orb-shield' : (type === 'red' ? ' g-orb-red' : '')));
+    el.className = 'g-orb' + (type === 'gold' ? ' g-orb-gold' : (type === 'shield' ? ' g-orb-shield' : (type === 'red' ? ' g-orb-red' : (type === 'chest' ? ' g-orb-chest' : ''))));
     el.style.width = size + 'px';
     el.style.height = size + 'px';
     el.setAttribute('aria-hidden','true');
@@ -3577,6 +3699,16 @@
     setTimeout(function(){ playTone({ freq:1046.5, duration:0.2, type:'sine', gain:0.16, release:0.2 }); }, 120);
   }
   function collectOrb(orb){
+    if(orb.type === 'chest'){
+      if(orb.el){ orb.el.remove(); }
+      galaxyOrbs = galaxyOrbs.filter(function(o){ return o !== orb; });
+      var reward = Math.random() < 0.4 ? 40 + Math.floor(Math.random() * 60) : 15 + Math.floor(Math.random() * 25);
+      cristaux += reward; cristauxGagnes += reward;
+      playShieldSound();
+      announce('Coffre ouvert ! +' + reward + ' cristaux.');
+      updateGalaxyCounter();
+      return;
+    }
     if(orb.type === 'red'){
       if(orb.el){ orb.el.remove(); }
       galaxyOrbs = galaxyOrbs.filter(function(o){ return o !== orb; });
@@ -3585,6 +3717,7 @@
       missionStats.orbs++; ensureDaily(); dailyState.orb++;
       if(galaxyPower < 5){ galaxyPower = Math.min(5, galaxyPower + 2); startFireLoop(); }
       playRedOrbSound();
+      haptic(15);
       announce('Orbe rouge rare ! +' + gr + ' cristaux.');
       updateGalaxyCounter();
       return;
@@ -3632,7 +3765,7 @@
   function collectSave(){
     return { v:1, cristaux:cristaux, cristauxGagnes:cristauxGagnes, cristauxLoupes:cristauxLoupes,
       ownedShips:ownedShips, equippedShipId:(trialShipId ? trialPrevId : equippedShipId), shipColorIndex:shipColorIndex,
-      best:bestScore, season:season, talents:talents, rareBossWeek:rareBossWeek, volume: (window.__apaiseVolume != null ? window.__apaiseVolume : 1),
+      best:bestScore, season:season, talents:talents, rareBossWeek:rareBossWeek, gameSpeed:gameSpeed, hapticOn:hapticOn, sfxVol:(window.__sfxVol != null ? window.__sfxVol : 1), musicVol:(window.__musicVol != null ? window.__musicVol : 1), volume: (window.__apaiseVolume != null ? window.__apaiseVolume : 1),
       stats:missionStats, daily:dailyState, achClaimed:achClaimed, difficulty:difficultyLevel,
       upgrades:upgrades, favorites:favorites, theme:galaxyTheme, seen:seenShips, sort:sortMode };
   }
@@ -3661,6 +3794,10 @@
     if(d.season) season = d.season;
     if(d.talents) talents = Object.assign({ shield:0, combo:0 }, d.talents);
     if(d.rareBossWeek !== undefined) rareBossWeek = d.rareBossWeek;
+    gameSpeed = d.gameSpeed || 'normal';
+    hapticOn = (d.hapticOn !== false);
+    window.__sfxVol = (typeof d.sfxVol === 'number') ? d.sfxVol : 1;
+    window.__musicVol = (typeof d.musicVol === 'number') ? d.musicVol : 1;
     sortMode = d.sort || 'prix';
     return true;
   }
@@ -3684,12 +3821,14 @@
   }
 
   // ---------- Vies et partie terminée ----------
+  function haptic(pattern){ if(!hapticOn){ return; } try{ if(navigator.vibrate){ navigator.vibrate(pattern); } }catch(e){} }
   function loseLife(){
     if(galaxyOver) return;
     if(performance.now() < galaxyShieldUntil){ announce('Bouclier : coup absorbé.'); return; }
     combo = 0;
     galaxyLives--;
     updateGalaxyCounter();
+    haptic([40, 30, 40]);
     playDashFailSound();
     if(galaxyLives <= 0){ gameOverGalaxy(); }
   }
@@ -3773,6 +3912,7 @@
   }
 
   // ---------- Statistiques, missions quotidiennes, succès, difficulté ----------
+  var gameSpeed = 'normal', hapticOn = true, galaxyFrame = 0, waveStart = null;
   var trialShipId = null, trialPrevId = null, season = { key:'', kills:0, claimed:{} }, talents = { shield:0, combo:0 };
   var danger = { next:0, zone:null }, rareBossWeek = -1, rareBossSpawned = false;
   var galaxyShieldUntil = 0, galaxyPaused = false, combo = 0, lastKillTs = 0, runBestCombo = 0, runBossStart = 0;
@@ -3832,6 +3972,45 @@
     stage.classList.remove('theme-ocean', 'theme-ember');
     if(galaxyTheme === 'ocean') stage.classList.add('theme-ocean');
     if(galaxyTheme === 'ember') stage.classList.add('theme-ember');
+  }
+
+  // ---- Vaisseaux à débloquer par objectif (les quatre plus chers) ----
+  (function(){
+    var top = SHIP_MODELS.slice().sort(function(a, b){ return b.cost - a.cost; }).slice(0, 4);
+    top[0].unlock = { type:'boss', n:3 };
+    top[1].unlock = { type:'kills', n:1000 };
+    top[2].unlock = { type:'level', n:6 };
+    top[3].unlock = { type:'orbs', n:300 };
+  })();
+  function unlockMet(model){
+    if(!model.unlock){ return true; }
+    var u = model.unlock;
+    if(u.type === 'boss'){ return missionStats.bossKills >= u.n; }
+    if(u.type === 'kills'){ return missionStats.kills >= u.n; }
+    if(u.type === 'level'){ return accountLevel() >= u.n; }
+    if(u.type === 'orbs'){ return missionStats.orbs >= u.n; }
+    return true;
+  }
+  function unlockText(model){
+    var u = model.unlock;
+    if(u.type === 'boss'){ return 'vaincre ' + u.n + ' boss'; }
+    if(u.type === 'kills'){ return 'éliminer ' + u.n + ' vaisseaux au total'; }
+    if(u.type === 'level'){ return 'atteindre le niveau de compte ' + u.n; }
+    return 'récupérer ' + u.n + ' orbes';
+  }
+
+  // ---- Bilan de vague ----
+  function showWaveSummary(){
+    if(!waveStart){ return; }
+    var stage = document.getElementById('galaxyStage');
+    var el = document.createElement('div');
+    el.className = 'wave-summary';
+    el.setAttribute('aria-hidden', 'true');
+    el.textContent = 'Vague ' + waveStart.num + ' terminée · orbes +' + (missionStats.orbs - waveStart.orbs) +
+      ' · cristaux +' + (cristaux - waveStart.cr) + ' · vies ' + galaxyLives;
+    stage.appendChild(el);
+    setTimeout(function(){ el.remove(); }, 2500);
+    announce('Vague terminée.');
   }
 
   // ---- Essai gratuit : un vaisseau non acheté, pour une partie ----
@@ -4060,8 +4239,14 @@
     var now = performance.now();
     var type = b.bossType || 0;
     var interval = (phase === 1 ? 1500 : (phase === 2 ? 1000 : 650)) * (type === 2 ? 0.5 : 1);
+    if(!b.warned && now - (b.lastShot || 0) > interval * 0.7){
+      b.warned = true;
+      b.el.classList.add('g-telegraph');
+      setTimeout(function(){ if(b.el){ b.el.classList.remove('g-telegraph'); } }, 300);
+    }
     if(now - (b.lastShot || 0) < interval) return;
     b.lastShot = now;
+    b.warned = false;
     var cx = b.x + b.w/2, cy = b.y + b.h;
     var tx = galaxyShipX + SHIP_W/2, ty = galaxyShipY + SHIP_H/2;
     var dx = tx - cx, dy = ty - cy, d = Math.sqrt(dx*dx + dy*dy) || 1;
@@ -4152,7 +4337,8 @@
     // Mise à jour des ennemis
     galaxyEnemies.forEach(function(en){
       if(en.mode === 'grid'){
-        en.x = en.baseX + galaxyFormation.offsetX;
+        en.x = en.baseX + galaxyFormation.offsetX + (en.pullX || 0);
+        en.pullX = (en.pullX || 0) * 0.92;
         en.y = en.baseY + galaxyFormation.offsetY;
       } else {
         en.y += en.vy;
@@ -4244,11 +4430,13 @@
     updateRings();
     updateSqueezes();
     updateTow();
+    updateKeyboardMove();
     updateBoss();
     updateShooters();
     updateEnemyShots(stageInfo);
     updateBossBar();
     updateDanger(stageInfo);
+    updateBurns();
 
     // Orbes de puissance
     var tgX = stageInfo.w/2, tgY = stageInfo.h - 7;
@@ -4281,6 +4469,7 @@
             resolveChainHit(m, en);
           } else {
             applyDamage(en, m.damage || 1);
+            if(m.effect){ applyEffect(en, m); }
             if(m.freeze){ applyFreezeEffect(en, m.freezeDuration); }
             if(m.splash){
               galaxyEnemies.forEach(function(other){
@@ -4314,13 +4503,71 @@
     // Vague suivante quand la formation est entièrement détruite
     if(galaxyMode === 'grid' && galaxyEnemies.length === 0 && !galaxyWaveScheduled){
       galaxyWaveScheduled = true;
+      showWaveSummary();
       setTimeout(function(){ if(galaxyMode === 'grid'){ buildWave(); } }, 900);
     }
 
   }
   // La boucle se reprogramme AVANT son travail : une erreur ponctuelle ne peut plus l'arrêter.
+  // ---------- Effets propres aux catégories ----------
+  var galaxyHits = 0;
+  function enemyDist(a, b){ var dx = (a.x + a.w/2) - (b.x + b.w/2), dy = (a.y + a.h/2) - (b.y + b.h/2); return Math.sqrt(dx*dx + dy*dy); }
+  function applyEffect(en, m){
+    var now = performance.now();
+    switch(m.effect){
+      case 'shield':
+        galaxyShieldUntil = Math.max(galaxyShieldUntil, now + 1000);
+        break;
+      case 'heal':
+        galaxyHits++;
+        if(galaxyHits % 15 === 0 && galaxyLives < 5){ galaxyLives++; updateGalaxyCounter(); announce('Vie récupérée.'); }
+        break;
+      case 'quake':
+        galaxyEnemies.slice().forEach(function(o){ if(o !== en && o.alive && enemyDist(o, en) < 120){ applyDamage(o, 1); } });
+        break;
+      case 'chain':
+        var near = null, nd = 110;
+        galaxyEnemies.forEach(function(o){ if(o !== en && o.alive){ var d = enemyDist(o, en); if(d < nd){ nd = d; near = o; } } });
+        if(near){ applyDamage(near, 1); }
+        break;
+      case 'pull':
+        galaxyEnemies.forEach(function(o){ if(o !== en && o.alive && o.mode === 'grid' && enemyDist(o, en) < 120){ o.pullX = (en.x - o.x) * 0.3 + (o.pullX || 0); } });
+        break;
+      case 'push':
+        galaxyEnemies.forEach(function(o){ if(o !== en && o.alive && o.mode === 'grid' && enemyDist(o, en) < 90){ o.pullX = (o.x - en.x) * 0.25 + (o.pullX || 0); } });
+        break;
+      case 'burn':
+        en.burnUntil = now + 3000; en.burnNext = now + 500;
+        break;
+      case 'frost':
+        en.fragileUntil = now + 3000;
+        if(en.el){ en.el.classList.add('g-frozen'); setTimeout(function(){ if(en.el){ en.el.classList.remove('g-frozen'); } }, 3000); }
+        break;
+      case 'obsidian':
+        if(en.boss && en.alive){ en.hp -= 2; }
+        break;
+      case 'split':
+        [-3, 3].forEach(function(vx){
+          createProjectile(m.x + m.w/2, m.y, vx, -4, { w:5, h:5, radius:'50%', bg:'#e0f2fe', glow:'0 0 6px #7dd3fc', damage:1, life:50 });
+        });
+        break;
+    }
+  }
+  // Brûlure : dégâts répétés pendant quelques secondes
+  function updateBurns(){
+    var now = performance.now();
+    galaxyEnemies.slice().forEach(function(en){
+      if(en.alive && en.burnUntil && now < en.burnUntil && now >= en.burnNext){
+        en.burnNext = now + 500;
+        applyDamage(en, 1);
+      }
+    });
+  }
+
   function galaxyLoop(){
     galaxyRafId = requestAnimationFrame(galaxyLoop);
+    galaxyFrame++;
+    if(gameSpeed === 'lent' && galaxyFrame % 4 === 0){ return; }
     try{ galaxyLoopBody(); }
     catch(e){ /* image ignorée silencieusement */ }
   }
@@ -4328,12 +4575,27 @@
   // Petite musique de fond procédurale façon rétro-spatial, en boucle discrète.
   var GALAXY_BASS = [110,0,110,130.81,0,98,98,0];
   var GALAXY_LEAD = [0,220,0,0,261.63,0,196.00,0];
+  function renderBalanceReport(){
+    var box = document.getElementById('balanceReport');
+    box.innerHTML = '';
+    WEAPON_CATEGORIES.forEach(function(cat){
+      var list = SHIP_MODELS.filter(function(m){ return m.weapon === cat.key; });
+      if(!list.length){ return; }
+      var vals = list.map(estimateDps);
+      var avg = Math.round(vals.reduce(function(a, b){ return a + b; }, 0) / vals.length);
+      var max = Math.max.apply(null, vals);
+      var p = document.createElement('p');
+      p.className = 'mission-row';
+      p.textContent = cat.label + ' : moyenne ≈ ' + avg + ' dégâts/s · maximum ≈ ' + max;
+      box.appendChild(p);
+    });
+  }
   function startMenuMusic(){
     if(menuMusicId) return;
     var chords = [[130.81,164.81,196.00],[116.54,146.83,174.61],[146.83,185.00,220.00],[123.47,155.56,185.00]];
     var step = 0;
     menuMusicId = setInterval(function(){
-      chords[step % chords.length].forEach(function(f){ playTone({ freq:f, duration:1.4, type:'triangle', gain:0.025, filterFreq:1200, attack:0.3, release:0.6 }); });
+      chords[step % chords.length].forEach(function(f){ playTone({ bus:'music', freq:f, duration:1.4, type:'triangle', gain:0.025, filterFreq:1200, attack:0.3, release:0.6 }); });
       step++;
     }, 1600);
   }
@@ -4343,6 +4605,21 @@
     { bass:[98,0,98,116.54,0,87.31,87.31,0], lead:[0,293.66,0,329.63,0,0,293.66,0], ms:225 },
     { bass:[82.41,0,82.41,92.5,0,77.78,77.78,0], lead:[0,246.94,0,0,277.18,0,246.94,0], ms:190 }
   ];
+  function addBackgroundStars(){
+    var stage = document.getElementById('galaxyStage');
+    if(!stage || stage.querySelector('.bg-star')){ return; }
+    for(var i = 0; i < 46; i++){
+      var s = document.createElement('div');
+      s.className = 'bg-star';
+      s.setAttribute('aria-hidden', 'true');
+      s.style.left = (Math.random() * 100) + '%';
+      s.style.top = (Math.random() * 100) + '%';
+      s.style.width = s.style.height = (1 + Math.random() * 1.8) + 'px';
+      s.style.animationDelay = (-Math.random() * 4) + 's';
+      s.style.animationDuration = (3 + Math.random() * 3) + 's';
+      stage.insertBefore(s, stage.firstChild);
+    }
+  }
   function startGalaxyMusic(){
     if(galaxyMusicIntervalId) return;
     var track = GALAXY_TRACKS[Math.floor(galaxyWaveNumber / 5) % GALAXY_TRACKS.length];
@@ -4350,8 +4627,8 @@
     galaxyMusicIntervalId = setInterval(function(){
       var b = track.bass[step % track.bass.length];
       var l = track.lead[step % track.lead.length];
-      if(b){ playTone({ freq:b, duration:0.22, type:'triangle', gain:0.08, filterFreq:900, release:0.08 }); }
-      if(l){ playTone({ freq:l, duration:0.14, type:'sine', gain:0.05, release:0.1 }); }
+      if(b){ playTone({ bus:'music', freq:b, duration:0.22, type:'triangle', gain:0.08, filterFreq:900, release:0.08 }); }
+      if(l){ playTone({ bus:'music', freq:l, duration:0.14, type:'sine', gain:0.05, release:0.1 }); }
       step++;
     }, track.ms);
   }
@@ -4377,16 +4654,5 @@
   loadGame();
 })();
 </script>
-
-<script>
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("./sw.js").catch(function (err) {
-      console.warn("APAISE : service worker non enregistré", err);
-    });
-  });
-}
-</script>
-
 </body>
 </html>
